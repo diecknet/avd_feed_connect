@@ -190,6 +190,5 @@ modules:
       - install -Dm644 io.github.shakeelosmani.avd_feed_connect.svg
         /app/share/icons/hicolor/scalable/apps/io.github.shakeelosmani.avd_feed_connect.svg
     sources:
-      - type: git
-        url: https://github.com/shakeelosmani/avd_feed_connect.git
-        commit: ddf6aa33b9fe09df5c25ff47f9e26c5613165070
+      - type: dir
+        path: .
