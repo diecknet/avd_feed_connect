@@ -493,7 +493,11 @@ def launch(path):
             os.pathsep + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
     os.makedirs(OUT, exist_ok=True)
     log = os.path.join(OUT, "feed-last-run.log")
-    argv = [SDL, path, "/gateway:type:arm", "/sec:aad"]
+    # The session host is expecting NLA for the RDP handshake. Keep the app's
+    # Azure sign-in for the feed, but do not force /sec:aad on the live session
+    # when the host explicitly requires its own username/password prompt.
+    # /d: clears sdl-freerdp's "AzureAD" domain guess in its native auth form.
+    argv = [SDL, path, "/gateway:type:arm", "/sec:nla", "/d:"]
     if UPN:
         argv.append(f"/u:{UPN}")
     argv += ["/sound:sys:pulse", "/microphone", "/cert:ignore",

@@ -1118,11 +1118,14 @@ class AvdApp(Gtk.Application):
         self._watch_session(child, res, proc, master, logpath)
 
     _ANSI = _re.compile(rb"\x1b\[[0-9;?]*[A-Za-z]")
+    _USER_PROMPT = _re.compile(r"(?i)(?:^|\b)(?:user(?:name)?|user name)\s*:\s*$")
+    _PASS_PROMPT = _re.compile(r"(?i)(?:^|\b)password\s*:\s*$")
 
     def _watch_session(self, child, res, proc, master, logpath):
         """Read sdl-freerdp's PTY output: flip the tile to 'Connected' on logon,
         service each 'Browse to:' AAD prompt silently, and tidy up on exit."""
-        state = {"connected": False}
+        state = {"connected": False, "prompt_active": False,
+                 "creds": None, "last_prompt": None, "auth_failures": 0}
         buf = b""
         log = open(logpath, "wb")
         try:
@@ -1144,6 +1147,13 @@ class AvdApp(Gtk.Application):
                     while b"\n" in buf:
                         raw, buf = buf.split(b"\n", 1)
                         line = self._ANSI.sub(b"", raw).decode("utf-8", "replace").strip()
+                        if line:
+                            self._on_freerdp_line(child, res, master, line, state)
+                    if buf:
+                        # Terminal prompts often do not end with a newline, so
+                        # look at the pending fragment too; repeated fragments
+                        # are ignored by _handle_credential_prompt.
+                        line = self._ANSI.sub(b"", buf).decode("utf-8", "replace").strip()
                         if line:
                             self._on_freerdp_line(child, res, master, line, state)
                 elif proc.poll() is not None:
@@ -1171,11 +1181,144 @@ class AvdApp(Gtk.Application):
             self._set_tile_state(res["id"], "● Connected", "state-connected")
             self._set_status(f"Connected to {res['title']}")
             self._set_connecting(res["id"], res["title"], False)  # desktop is up
+        low = line.lower()
+        if "authentication failure" in low or "logon failure" in low:
+            state["auth_failures"] += 1
+            state["creds"] = None
+            state["last_prompt"] = None
+            if state["auth_failures"] > 1:
+                self._set_status(f"Credentials were rejected for {res['title']}")
         if line.startswith("Browse to: "):
             url = line[len("Browse to: "):].strip()
             if url.startswith("http"):
                 # Resolve on the main thread (WebKit must run there).
                 GLib.idle_add(self._resolve_aad, master, url, res)
+            return
+        prompt = self._credential_prompt(line)
+        if prompt:
+            self._handle_credential_prompt(child, res, master, prompt, line, state)
+
+    def _credential_prompt(self, line):
+        """Return the FreeRDP credential prompt kind for a terminal fragment."""
+        if self._PASS_PROMPT.search(line):
+            return "password"
+        if self._USER_PROMPT.search(line):
+            return "username"
+        low = line.lower()
+        if "enter password" in low:
+            return "password"
+        if "enter user" in low or "enter username" in low:
+            return "username"
+        return None
+
+    def _handle_credential_prompt(self, child, res, master, prompt, line, state):
+        key = (prompt, line)
+        if state.get("prompt_active") or state.get("last_prompt") == key:
+            return
+        if state.get("auth_failures", 0) > 1:
+            try:
+                os.write(master, b"\n")
+            except OSError:
+                pass
+            return
+        state["last_prompt"] = key
+        creds = state.get("creds")
+        if prompt == "password" and creds and creds.get("password"):
+            try:
+                os.write(master, (creds["password"] + "\n").encode())
+            except OSError:
+                pass
+            state["creds"] = None
+            return
+        state["prompt_active"] = True
+        self._set_tile_state(res["id"], "● Credentials required", "state-connecting")
+        self._set_status(f"Credentials required for {res['title']}")
+        GLib.idle_add(self._prompt_credentials, child, res, master, prompt, state)
+
+    def _prompt_credentials(self, child, res, master, prompt, state):
+        """Ask for session credentials and write only the requested value now."""
+        win = Gtk.Window(title=f"Credentials — {res['title']}",
+                         transient_for=self.win, modal=True)
+        win.set_default_size(420, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for m in ("top", "bottom", "start", "end"):
+            getattr(box, f"set_margin_{m}")(16)
+
+        title = Gtk.Label(label=f"Enter credentials for {res['title']}", xalign=0)
+        title.add_css_class("settings-title")
+        box.append(title)
+
+        user_entry = Gtk.Entry()
+        user_entry.set_text(af.UPN or "")
+        user_entry.set_hexpand(True)
+        box.append(self._form_row("Username", user_entry))
+
+        pass_entry = Gtk.Entry()
+        pass_entry.set_visibility(False)
+        pass_entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+        pass_entry.set_hexpand(True)
+        box.append(self._form_row("Password", pass_entry))
+
+        note = Gtk.Label(label="Password is used for this connection only.",
+                         xalign=0, wrap=True)
+        note.add_css_class("tile-sub")
+        box.append(note)
+
+        btnbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        btnbox.set_halign(Gtk.Align.END)
+        cancel = Gtk.Button(label="Cancel")
+        connect = Gtk.Button(label="Connect")
+        connect.add_css_class("suggested-action")
+        btnbox.append(cancel)
+        btnbox.append(connect)
+        box.append(btnbox)
+
+        holder = {"done": False}
+
+        def finish(lines):
+            if holder["done"]:
+                return
+            holder["done"] = True
+            state["prompt_active"] = False
+            try:
+                os.write(master, ("\n".join(lines) + "\n").encode())
+            except OSError:
+                pass
+            win.destroy()
+
+        def do_connect(*_):
+            username = user_entry.get_text().strip()
+            password = pass_entry.get_text()
+            if prompt == "username":
+                state["creds"] = {"password": password}
+                finish([username])
+            else:
+                state["creds"] = None
+                finish([password])
+
+        def do_cancel(*_):
+            state["creds"] = None
+            finish([""])
+
+        def on_destroy(*_):
+            if not holder["done"]:
+                state["prompt_active"] = False
+                state["creds"] = None
+                try:
+                    os.write(master, b"\n")
+                except OSError:
+                    pass
+
+        cancel.connect("clicked", do_cancel)
+        connect.connect("clicked", do_connect)
+        pass_entry.connect("activate", do_connect)
+        user_entry.connect("activate", lambda *_: pass_entry.grab_focus())
+        win.connect("close-request", lambda w: (w.destroy(), True)[1])
+        win.connect("destroy", on_destroy)
+        win.set_child(box)
+        win.present()
+        (user_entry if prompt == "username" and not af.UPN else pass_entry).grab_focus()
+        return False
 
     def _resolve_aad(self, master, url, res):
         """Service FreeRDP's connection-time AAD prompt: load its authorize URL
