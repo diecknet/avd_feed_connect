@@ -60,6 +60,11 @@ connection token is acquired with no visible prompt; a window only appears if
 MFA/consent is genuinely required (after a short delay). This also removes a
 whole class of blank/second-window bugs the bundled FreeRDP webview could hit.
 
+Some host pools also require Windows/session credentials after the Entra step.
+When FreeRDP asks for a username or password, the app shows a connection-only
+credentials dialog and passes the response back through the same terminal
+channel. These credentials are not saved in the app settings or keyring.
+
 ## The bundled FreeRDP
 
 The Flatpak builds FreeRDP from upstream `master` with **camera redirection**
