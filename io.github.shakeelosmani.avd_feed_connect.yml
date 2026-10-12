@@ -187,6 +187,5 @@ modules:
       - install -Dm644 io.github.shakeelosmani.avd_feed_connect-symbolic.svg
         /app/share/avd-feed-connect/tray/io.github.shakeelosmani.avd_feed_connect-symbolic
     sources:
-      - type: git
-        url: https://github.com/shakeelosmani/avd_feed_connect.git
-        commit: ddf6aa33b9fe09df5c25ff47f9e26c5613165070
+      - type: dir
+        path: .
