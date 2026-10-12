@@ -977,7 +977,8 @@ class AvdApp(Gtk.Application):
             or self._eff("cert", res)
         cert_flag = "/cert:ignore" if cert_mode == "ignore" else "/cert:tofu"
         apply_client_hotkeys(self._eff("hotkeys", res))
-        argv += ["/sound:sys:pulse", "/microphone", cert_flag,
+        # FIDO2/WebAuthn redirection; the feed's redirectwebauthn:i:1 alone doesn't load it.
+        argv += ["/sound:sys:pulse", "/microphone", "/dvc:rdpewa", cert_flag,
                  f"/scale-desktop:{scale}", "/log-level:info",
                  # bandwidth/quality + resilience + keepalive:
                  "+compression", "+fonts",

@@ -116,6 +116,7 @@ def test_argv_core_flags():
     assert "/sec:aad" in argv
     assert "/f" in argv
     assert "-multimon" in argv
+    assert "/dvc:rdpewa" in argv
 
 
 def test_argv_includes_user_when_upn_set():

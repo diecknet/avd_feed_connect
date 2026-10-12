@@ -92,7 +92,8 @@ def build_argv(sdl, path, upn):
     # off for host pools whose session-host certs rotate.
     cert_flag = "/cert:ignore" if os.environ.get("AVD_CERT", "").strip().lower() \
         == "ignore" else "/cert:tofu"
-    argv += ["/sound:sys:pulse", "/microphone", cert_flag,
+    # The feed's redirectwebauthn:i:1 doesn't load the channel, so request it explicitly.
+    argv += ["/sound:sys:pulse", "/microphone", "/dvc:rdpewa", cert_flag,
              "/f", "/scale-desktop:200", "-multimon", "/log-level:info"]
     return argv
 

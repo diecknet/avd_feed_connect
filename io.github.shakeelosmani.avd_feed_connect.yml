@@ -6,6 +6,8 @@
 #     MERGED to upstream master) — without them an audio-device change mid Teams
 #     call FREEZES the whole session.
 #   * the camera-redirection channel (-DCHANNEL_RDPECAM_CLIENT=ON).
+#   * WebAuthn redirection (-DCHANNEL_RDPEWA_CLIENT=ON, via libfido2), so local
+#     FIDO2 security keys work for websites inside the session.
 #
 # Builds and runs on GNOME 51; every source is pinned to a commit for
 # reproducibility.
@@ -25,7 +27,7 @@ finish-args:
   - --socket=x11
   - --socket=pulseaudio             # RDP audio playback + microphone redirect
   - --device=dri                    # GPU for the RDP graphics pipeline
-  - --device=all                    # webcam (camera redirection) + input
+  - --device=all                    # webcam (camera redirection), FIDO2 keys (/dev/hidraw*) + input
   - --talk-name=org.kde.StatusNotifierWatcher   # tray icon
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.secrets         # login keyring (libsecret) for the refresh token
@@ -102,6 +104,37 @@ modules:
         url: https://github.com/libusb/libusb/releases/download/v1.0.27/libusb-1.0.27.tar.bz2
         sha256: ffaa41d741a8a3bee244ac8e54a72ea05bf2879663c098c82fc5757853441575
 
+  # ---- WebAuthn redirection deps (FreeRDP rdpewa channel) ---------------
+  - name: libcbor
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DWITH_EXAMPLES=OFF
+    sources:
+      - type: git
+        url: https://github.com/PJK/libcbor.git
+        tag: v0.14.0
+        commit: 6730c20ab487c0b4dc5fb3fea918937085355bac
+
+  - name: libfido2
+    buildsystem: cmake-ninja
+    config-opts:
+      # Not Release: that adds -D_FORTIFY_SOURCE=2, which under -Werror clashes
+      # with the SDK's own _FORTIFY_SOURCE=3.
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DBUILD_STATIC_LIBS=OFF
+      - -DBUILD_TESTS=OFF
+      - -DBUILD_EXAMPLES=OFF
+      - -DBUILD_MANPAGES=OFF
+      - -DBUILD_TOOLS=OFF
+      - -DNFC_LINUX=OFF
+    sources:
+      - type: git
+        url: https://github.com/Yubico/libfido2.git
+        tag: 1.17.0
+        commit: b974e7cf2ee7392134cc12c08b76a068cf250dd8
+
   # ---- the FreeRDP SDL3 client, our -cam tree with the pulse fixes -------
   - name: freerdp
     buildsystem: cmake-ninja
@@ -128,6 +161,9 @@ modules:
       - -DWITH_FUSE=OFF          # FUSE clipboard file-copy; not needed, avoids fuse3 dep
       - -DWITH_MANPAGES=OFF
       - -DCHANNEL_RDPECAM_CLIENT=ON
+      # AVD feed .rdp files carry redirectwebauthn:i:1, which loads this channel.
+      - -DCHANNEL_RDPEWA=ON
+      - -DCHANNEL_RDPEWA_CLIENT=ON
       - -DWINPR_UTILS_IMAGE_PNG=ON
       - -DWINPR_UTILS_IMAGE_JPEG=ON
       - -DWINPR_UTILS_IMAGE_WEBP=ON
