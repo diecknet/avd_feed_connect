@@ -140,6 +140,31 @@ flatpak run org.flatpak.Builder --user --install --force-clean build-dir \
 flatpak run io.github.shakeelosmani.avd_feed_connect
 ```
 
+> **Building your own code changes?** The manifest above pins the app module to a
+> published commit (a `type: git` source), so it builds the *released* code, not
+> your working tree — and the release workflow and the planned Flathub listing
+> both rely on it staying a pinned git source. To build local changes, copy the
+> manifest and point that one copy at the working tree instead of editing the
+> tracked file:
+>
+> ```bash
+> cp io.github.shakeelosmani.avd_feed_connect.yml local.yml
+> ```
+>
+> In `local.yml`, change only the last module's (`avd-feed-connect`) source from
+> the `type: git` / `url` / `commit` block to:
+>
+> ```yaml
+>     sources:
+>       - type: dir
+>         path: .
+> ```
+>
+> then `flatpak run org.flatpak.Builder --user --install --force-clean build-dir local.yml`.
+> Keep the copy at the repo root (so the `patches/…` paths still resolve) and
+> don't commit it. For quick GUI/CLI iteration without a Flatpak rebuild, run it
+> unpackaged (below).
+
 ## Run unpackaged (development)
 
 The same code runs without Flatpak if you have PyGObject (Gtk 4.0, WebKit 6.0)
