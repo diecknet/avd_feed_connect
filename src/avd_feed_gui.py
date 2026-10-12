@@ -84,7 +84,7 @@ from avd_feed_connect.gui.tray import TrayIcon  # noqa: E402
 af = AvdClient()
 
 APP_NAME = "AVD Feed + Connect Linux"
-APP_VERSION = "0.4.9"
+APP_VERSION = "0.4.10"
 
 
 
@@ -605,6 +605,7 @@ class AvdApp(Gtk.Application):
         # close-request + always destroying/rebuilding the dialog + DMABUF off),
         # so persistence is safe and is what actually reduces sign-in prompts.
         wv = WebKit.WebView(network_session=self._web_session())
+        self._apply_ua(wv)   # account sign-in → Default UA (issue #28)
         dlg.set_child(wv)
         self._signin_dlg = dlg
         got_code = [False]
@@ -1095,6 +1096,7 @@ class AvdApp(Gtk.Application):
         redirect URL back to FreeRDP's stdin. The window is shown only if it
         doesn't resolve silently within 3s (i.e. MFA/consent is really needed)."""
         wv = WebKit.WebView(network_session=self._web_session())
+        self._apply_ua(wv)   # account-wide sign-in UA, must match sign-in (issue #28)
         # Unpresented window: a WebView loads/navigates while its window is
         # hidden (verified), so the silent path never flashes a window.
         win = Gtk.Window(title=f"Sign in — {res['title']}", transient_for=self.win)
@@ -1276,6 +1278,25 @@ class AvdApp(Gtk.Application):
             return dv
         return None
 
+    def _eff_ua(self):
+        """Resolve the sign-in webview User-Agent, or "" for the device's own
+        WebKit UA. It is a single account-wide value (the Default setting): every
+        sign-in webview shares one persistent SSO cookie session, so they must
+        all present the same identity or Entra refuses the silent token. A
+        per-resource UA would only ever work when it equalled this, so there
+        isn't one — this covers the account sign-in and every connection."""
+        dv = self._settings.get("_default", {}).get("user_agent", "auto")
+        return dv if dv and dv != "auto" else ""
+
+    def _apply_ua(self, wv):
+        """Spoof the sign-in webview's User-Agent when configured (issue #28)."""
+        ua = self._eff_ua()
+        if ua:
+            try:
+                wv.get_settings().set_user_agent(ua)
+            except Exception:
+                pass
+
     def _eff_extra(self, res):
         parts = [self._settings.get("_default", {}).get("extra_args", ""),
                  self._settings.get(res["id"], {}).get("extra_args", ""),
@@ -1324,6 +1345,33 @@ class AvdApp(Gtk.Application):
         hk_dd.set_selected(storage.HOTKEY_VALUES.index(hv) if hv in storage.HOTKEY_VALUES else 0)
         box.append(self._form_row("Client shortcuts", hk_dd))
 
+        # Sign-in browser identity (User-Agent). Lets a tenant that blocks Linux
+        # at sign-in via Conditional Access be satisfied by posing as Edge/Chrome
+        # on Windows (issue #28). Stored value is the literal UA string; "Custom…"
+        # reveals an entry. It is account-wide (Default only, not per resource):
+        # every sign-in webview shares one SSO session, so a per-resource identity
+        # that differed from the account's would just fail to connect.
+        ua_dd = None
+        if res is None:
+            uav = cur.get("user_agent", "auto")
+            ua_dd = Gtk.DropDown(model=Gtk.StringList.new(storage.UA_LABELS))
+            ua_entry = Gtk.Entry()
+            ua_entry.set_hexpand(True)
+            ua_entry.set_placeholder_text("paste a User-Agent string")
+            if uav in storage.UA_PRESETS:
+                ua_dd.set_selected(storage.UA_PRESETS.index(uav))
+            else:
+                ua_dd.set_selected(len(storage.UA_LABELS) - 1)   # "Custom…"
+                ua_entry.set_text(uav)
+            box.append(self._form_row("Sign-in browser", ua_dd))
+            ua_entry_row = self._form_row("Custom identity", ua_entry)
+            ua_entry_row.set_visible(ua_dd.get_selected() == len(storage.UA_LABELS) - 1)
+            box.append(ua_entry_row)
+            ua_dd.connect(
+                "notify::selected",
+                lambda dd, *_: ua_entry_row.set_visible(
+                    dd.get_selected() == len(storage.UA_LABELS) - 1))
+
         extra_entry = Gtk.Entry()
         extra_entry.set_text(cur.get("extra_args", ""))
         extra_entry.set_placeholder_text("advanced: e.g. /gfx /network:auto")
@@ -1350,9 +1398,16 @@ class AvdApp(Gtk.Application):
                 "hotkeys": storage.HOTKEY_VALUES[hk_dd.get_selected()],
                 "extra_args": extra_entry.get_text().strip(),
             }
+            if ua_dd is not None:   # Default settings only; account-wide (issue #28)
+                ua_sel = ua_dd.get_selected()
+                if ua_sel == len(storage.UA_LABELS) - 1:        # "Custom…"
+                    entry["user_agent"] = ua_entry.get_text().strip() or "auto"
+                else:
+                    entry["user_agent"] = storage.UA_PRESETS[ua_sel]
             # drop an all-default entry so the file stays tidy
             if entry["scale"] == "auto" and entry["multimon"] == "auto" \
                     and entry["cert"] == "auto" and entry["hotkeys"] == "auto" \
+                    and entry.get("user_agent", "auto") == "auto" \
                     and not entry["extra_args"]:
                 self._settings.pop(key, None)
             else:
