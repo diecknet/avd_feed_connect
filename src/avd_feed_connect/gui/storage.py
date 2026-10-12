@@ -40,6 +40,29 @@ HOTKEY_LABELS = ["Automatic (FreeRDP default)", "Enabled (Right Shift + key)",
                  "Disabled (send all keys to the PC)"]
 HOTKEY_VALUES = ["auto", "on", "off"]
 
+# User-Agent presented by the embedded sign-in webview. "auto" leaves
+# WebKitGTK's own UA, which identifies as Linux — some tenants' Conditional
+# Access policies ("require a compliant/Windows device" or "require Microsoft
+# Edge") then block the sign-in. Presenting as Edge/Chrome on Windows is the
+# same workaround people use with a browser UA-switcher extension (issue #28).
+# Account-wide, stored only on the "_default" entry under "user_agent"; every
+# sign-in webview shares one SSO cookie session, so the identity must be the
+# same everywhere (the account sign-in and every connection) or Entra refuses
+# the silent token — hence no per-resource override. The stored value is the
+# literal UA string (or a preset below); "Custom…" needs no separate key,
+# "auto" means the device's own UA.
+UA_WINDOWS_EDGE = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                   "AppleWebKit/537.36 (KHTML, like Gecko) "
+                   "Chrome/132.0.0.0 Safari/537.36 Edg/132.0.0.0")
+UA_WINDOWS_CHROME = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                     "AppleWebKit/537.36 (KHTML, like Gecko) "
+                     "Chrome/132.0.0.0 Safari/537.36")
+# Dropdown labels and the fixed-preset value for each; index 3 ("Custom…") takes
+# a typed string instead, so it has no entry here.
+UA_LABELS = ["Automatic", "Microsoft Edge on Windows",
+             "Google Chrome on Windows", "Custom…"]
+UA_PRESETS = ["auto", UA_WINDOWS_EDGE, UA_WINDOWS_CHROME]
+
 
 def icon_path(res_id):
     return os.path.join(ICON_DIR, re.sub(r"[^A-Za-z0-9_.-]", "_", res_id) + ".png")

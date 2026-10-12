@@ -60,6 +60,19 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.4.10" date="2026-10-11">
+      <description>
+        <ul>
+          <li>New Sign-in browser option (under the account menu → Default
+          settings). If your organization's Conditional Access policy only
+          allows sign-in from a Windows device or Microsoft Edge, set it to
+          Microsoft Edge on Windows (or Chrome on Windows, or a custom
+          user-agent) so the built-in sign-in window is no longer blocked for
+          being Linux. Leave it on Automatic otherwise. Thanks to Jeffezbr for
+          the request.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.4.9" date="2026-10-08">
       <description>
         <ul>

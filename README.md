@@ -140,6 +140,31 @@ flatpak run org.flatpak.Builder --user --install --force-clean build-dir \
 flatpak run io.github.shakeelosmani.avd_feed_connect
 ```
 
+> **Building your own code changes?** The manifest above pins the app module to a
+> published commit (a `type: git` source), so it builds the *released* code, not
+> your working tree — and the release workflow and the planned Flathub listing
+> both rely on it staying a pinned git source. To build local changes, copy the
+> manifest and point that one copy at the working tree instead of editing the
+> tracked file:
+>
+> ```bash
+> cp io.github.shakeelosmani.avd_feed_connect.yml local.yml
+> ```
+>
+> In `local.yml`, change only the last module's (`avd-feed-connect`) source from
+> the `type: git` / `url` / `commit` block to:
+>
+> ```yaml
+>     sources:
+>       - type: dir
+>         path: .
+> ```
+>
+> then `flatpak run org.flatpak.Builder --user --install --force-clean build-dir local.yml`.
+> Keep the copy at the repo root (so the `patches/…` paths still resolve) and
+> don't commit it. For quick GUI/CLI iteration without a Flatpak rebuild, run it
+> unpackaged (below).
+
 ## Run unpackaged (development)
 
 The same code runs without Flatpak if you have PyGObject (Gtk 4.0, WebKit 6.0)
@@ -188,11 +213,12 @@ override it, the easiest way is right inside the app.
 #### In-app settings (no terminal, remembered per workspace)
 
 - **Per workspace:** right-click a workspace tile → set its **Display scale**,
-  **Monitors** (single / all / automatic), **Server certificate**, **Client shortcuts**, and any
-  **Advanced flags**. These are remembered per resource, so a RemoteApp and a
-  full Desktop can differ.
+  **Monitors** (single / all / automatic), **Server certificate**, **Client shortcuts**,
+  and any **Advanced flags**. These are remembered per resource, so a RemoteApp
+  and a full Desktop can differ.
 - **Defaults for everything:** the **⋯ menu → Default settings…** sets the
-  fallback used by any workspace left on "Automatic".
+  fallback used by any workspace left on "Automatic", plus the account-wide
+  **Sign-in browser** identity.
 
 Precedence is: a workspace's own setting → your Default settings → automatic
 detection. (Environment variables, below, override even these — for scripting.)
@@ -216,6 +242,28 @@ under XWayland), an ordinary Ctrl+D can end the session. Set **Client
 shortcuts → Disabled** to pass every key through. The choice is written to
 FreeRDP's own `~/.config/freerdp/sdl-freerdp.json` (`SDL_KeyModMask`) on each
 connect; **Automatic** leaves that file untouched.
+
+**Sign-in browser (if your organization blocks Linux at sign-in).** Some
+tenants have a Conditional Access policy that only lets you sign in from a
+**Windows device** or **Microsoft Edge**, and it decides that from the browser
+identity (User-Agent) the sign-in sends. The built-in sign-in window is Linux
+WebKit, so such a tenant blocks it — the same wall you hit in a web browser
+until you install a "User-Agent switcher" extension. This setting is that
+switch, built in: in **⋯ menu → Default settings…** set **Sign-in browser** to
+**Microsoft Edge on Windows** (or **Google Chrome on Windows**) and every
+sign-in window presents that identity instead, which is enough to satisfy those
+policies. **Custom…** lets you paste any User-Agent string verbatim.
+
+Leave it on **Automatic** unless a sign-in is actually being blocked —
+**Automatic** is the normal Linux identity and is what everyone who isn't behind
+such a policy should keep.
+
+It is a single, **account-wide** choice (so it lives in Default settings, not on
+individual workspaces): the first account sign-in and every connection share one
+signed-in session, so they must all present the **same** identity — if they
+differed, Microsoft would see an inconsistent device for that session and refuse
+to connect. The setting changes only the sign-in window's identity — not the
+remote session — and takes effect on your next sign-in.
 
 **Resizable window (dynamic resolution):** by default the session opens
 fullscreen. If you'd rather have a resizable window whose remote resolution
